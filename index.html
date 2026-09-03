@@ -94,6 +94,15 @@
 
     let localBookings = []; // 현재 로컬에 수신된 전체 예약 데이터
 
+     // 요일 계산 헬퍼 함수
+    function getDayOfWeekName(dateString) {
+        if (!dateString) return '';
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const [year, month, day] = dateString.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day);
+        return days[dateObj.getDay()];
+    }
+
     // 오늘 기준 7일 날짜 제한 설정
     function setDateLimits() {
         const today = new Date();
@@ -110,7 +119,20 @@
         dateInput.min = formatDate(today);
         dateInput.max = formatDate(maxDate);
         dateInput.value = formatDate(today);
+        
+        updateDayOfWeekLabel();
     }
+
+    // 날짜 라벨옆 요일 갱신 함수
+    function updateDayOfWeekLabel() {
+        if (dateInput.value) {
+            const dayName = getDayOfWeekName(dateInput.value);
+            dayOfWeekDisplay.textContent = `(${dayName})`;
+        } else {
+            dayOfWeekDisplay.textContent = '';
+        }
+    }
+
 
     // 06:00 - 24:00 (30분 단위) 옵션 생성 및 예약 상태 반영
     function updateTimeSlots() {
@@ -246,7 +268,7 @@
         }
     };
 
-    // 화면 렌더링
+   // 화면 렌더링 (날짜 옆에 요일 표기 반영)
     function renderBookings() {
         listElement.innerHTML = '';
 
