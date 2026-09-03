@@ -16,7 +16,7 @@
         .list-title { margin-top: 30px; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; color: #2c3e50; }
         ul { list-style: none; padding: 0; }
         li { background: #f8f9fa; padding: 12px; border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .cancel-btn { background-color: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; width: auto; margin-top: 0; font-size: 12px; }
+        .cancel-btn { background-color: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; width: auto; margin-top: 0; font-size: 12px; }
         .cancel-btn:hover { background-color: #c0392b; }
         .info-text { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
     </style>
@@ -32,6 +32,11 @@
     </div>
 
     <div class="form-group">
+        <label for="userPassword">예약 비밀번호 (취소 확인용 4자리)</label>
+        <input type="password" id="userPassword" maxlength="4" placeholder="숫자 또는 문자 4자리 설정">
+    </div>
+
+    <div class="form-group">
         <label for="bookingDate">예약 날짜</label>
         <input type="date" id="bookingDate">
         <div class="info-text">* 오늘 기준으로 7일 이내 날짜만 예약 가능합니다.</div>
@@ -41,7 +46,7 @@
         <label for="courtSelect">코트 선택</label>
         <select id="courtSelect">
             <option value="1번 코트 (인조잔디)">1번 코트 (인조잔디)</option>
-            <option value="2번 코트 (클레이)">2번 코트 (클레이_인조잔디 옆)</option>
+            <option value="2번 코트 (클레이)">2번 코트 (클레이_인조잔디옆)</option>
             <option value="3번 코트 (클레이)">3번 코트 (클레이)</option>
         </select>
     </div>
@@ -57,13 +62,14 @@
     <ul id="bookingList"></ul>
 </div>
 
-<!-- Firebase SDK (v9+ 모듈 방식) -->
+<!-- Firebase SDK -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-    // ⚠️ 아래 정보를 본인의 Firebase 프로젝트 설정값으로 반드시 교체해 주세요!
+    // ⚠️ 본인의 Firebase 설정값으로 변경해 주세요.
     const firebaseConfig = {
+       const firebaseConfig = {
        apiKey: "AIzaSyBLf8wUbvC0-52_wnGaGV2ezQEyADA2OHk",
   authDomain: "tennis-court-c519a.firebaseapp.com",
   databaseURL: "https://tennis-court-c519a-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -73,19 +79,19 @@
   appId: "1:102054557591:web:1a71f410276e1dade8f6d2"
     };
 
-    // Firebase 초기화
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const bookingsRef = ref(db, 'tennis_bookings');
 
     const dateInput = document.getElementById('bookingDate');
     const userNameInput = document.getElementById('userName');
+    const userPasswordInput = document.getElementById('userPassword');
     const courtSelect = document.getElementById('courtSelect');
     const timeSelect = document.getElementById('timeSelect');
     const bookBtn = document.getElementById('bookBtn');
     const listElement = document.getElementById('bookingList');
 
-    let localBookings = []; // 현재 로컬에 수신된 전체 예약 데이터
+    let localBookings = [];
 
     // 오늘 기준 7일 날짜 제한 설정
     function setDateLimits() {
@@ -129,7 +135,7 @@
         }
     }
 
-    // [핵심] Firebase 실시간 리스너: DB 데이터가 변경되면 연결된 모든 화면이 자동 업데이트됨
+    // Firebase 실시간 리스너
     onValue(bookingsRef, (snapshot) => {
         const data = snapshot.val();
         localBookings = [];
@@ -146,12 +152,17 @@
     // 예약 신청
     bookBtn.addEventListener('click', () => {
         const name = userNameInput.value.trim();
+        const password = userPasswordInput.value.trim();
         const date = dateInput.value;
         const court = courtSelect.value;
         const time = timeSelect.value;
 
         if (!name) {
             alert('예약자 성함을 입력해 주세요.');
+            return;
+        }
+        if (!password || password.length < 4) {
+            alert('예약 취소 시 사용할 비밀번호 4자리를 입력해 주세요.');
             return;
         }
         if (!date) {
@@ -172,30 +183,41 @@
             return;
         }
 
-        // Firebase Realtime DB 저장
+        // Firebase Realtime DB 저장 (비밀번호 포함)
         push(bookingsRef, {
             name: name,
+            password: password,
             date: date,
             court: court,
             time: time,
             createdAt: Date.now()
         }).then(() => {
-            alert('✅ 예약이 완료되었습니다! (전체 컴퓨터에 실시간 반영)');
+            alert('✅ 예약이 완료되었습니다!');
             userNameInput.value = '';
+            userPasswordInput.value = '';
         }).catch((err) => {
             alert('오류가 발생했습니다: ' + err.message);
         });
     });
 
-    // 예약 취소 (전역 연결)
+    // 예약 취소 검증 (본인 인증)
     window.deleteBooking = function(id) {
-        if (confirm('예약을 취소하시겠습니까?')) {
+        const targetBooking = localBookings.find(b => b.id === id);
+        if (!targetBooking) return;
+
+        const inputPassword = prompt(`[${targetBooking.name}]님의 예약을 취소합니다.\n예약 시 설정한 비밀번호 4자리를 입력해 주세요:`);
+
+        if (inputPassword === null) return; // 취소 버튼을 누른 경우
+
+        if (inputPassword === targetBooking.password) {
             const itemRef = ref(db, `tennis_bookings/${id}`);
             remove(itemRef).then(() => {
-                alert('예약이 취소되었습니다.');
+                alert('✅ 예약이 정상적으로 취소되었습니다.');
             }).catch((err) => {
                 alert('취소 처리 실패: ' + err.message);
             });
+        } else {
+            alert('❌ 비밀번호가 일치하지 않습니다. 본인만 취소할 수 있습니다.');
         }
     };
 
@@ -224,7 +246,6 @@
         });
     }
 
-    // 초기화 실행
     setDateLimits();
     generateTimeSlots();
 </script>
