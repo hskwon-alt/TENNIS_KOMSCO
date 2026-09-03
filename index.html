@@ -20,6 +20,14 @@
         .cancel-btn:hover { background-color: #c0392b; }
         .info-text { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
         option:disabled { color: #aaa; background-color: #eee; }
+
+        /* 날짜 및 요일 커스텀 입력창 스타일 */
+        .date-input-wrapper { position: relative; width: 100%; }
+        .date-input-wrapper input[type="text"] { cursor: pointer; background-color: #fff; }
+        .date-input-wrapper input[type="date"] {
+            position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; z-index: 10;
+        }
     </style>
 </head>
 <body>
@@ -39,7 +47,12 @@
 
     <div class="form-group">
         <label for="bookingDate">예약 날짜</label>
-        <input type="date" id="bookingDate">
+        <div class="date-input-wrapper">
+            <!-- 요일 포함 표시용 텍스트 입력창 -->
+            <input type="text" id="bookingDateText" readonly placeholder="날짜를 선택하세요">
+            <!-- 달력 피커 작동용 숨김 date 입력창 -->
+            <input type="date" id="bookingDate">
+        </div>
         <div class="info-text">* 오늘 기준으로 7일 이내 날짜만 예약 가능합니다.</div>
     </div>
 
@@ -85,6 +98,7 @@
     const bookingsRef = ref(db, 'tennis_bookings');
 
     const dateInput = document.getElementById('bookingDate');
+    const dateInputText = document.getElementById('bookingDateText');
     const userNameInput = document.getElementById('userName');
     const userPasswordInput = document.getElementById('userPassword');
     const courtSelect = document.getElementById('courtSelect');
@@ -94,13 +108,33 @@
 
     let localBookings = []; // 현재 로컬에 수신된 전체 예약 데이터
 
-     // 요일 계산 헬퍼 함수
+    // 오늘 날짜 문자열 반환 (YYYY-MM-DD)
+    function getTodayString() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // 요일 계산 헬퍼 함수
     function getDayOfWeekName(dateString) {
         if (!dateString) return '';
         const days = ['일', '월', '화', '수', '목', '금', '토'];
         const [year, month, day] = dateString.split('-').map(Number);
         const dateObj = new Date(year, month - 1, day);
         return days[dateObj.getDay()];
+    }
+
+    // 선택된 날짜에 요일 붙여 텍스트 창에 업데이트 (예: 2026-09-04(금))
+    function updateDateDisplay() {
+        const val = dateInput.value;
+        if (val) {
+            const dayName = getDayOfWeekName(val);
+            dateInputText.value = `${val}(${dayName})`;
+        } else {
+            dateInputText.value = '';
+        }
     }
 
     // 오늘 기준 7일 날짜 제한 설정
@@ -120,18 +154,9 @@
         dateInput.max = formatDate(maxDate);
         dateInput.value = formatDate(today);
         
-        updateDayOfWeekLabel();
+        updateDateDisplay();
     }
 
-    // 날짜 라벨옆 요일 갱신 함수
-    function updateDayOfWeekLabel() {
-        if (dateInput.value) {
-            const dayName = getDayOfWeekName(dateInput.value);
-            dayOfWeekDisplay.textContent = `(${dayName})`;
-        } else {
-            dayOfWeekDisplay.textContent = '';
-        }
-    }
     // 06:00 - 24:00 (30분 단위) 옵션 생성 및 예약 상태 반영
     function updateTimeSlots() {
         timeSelect.innerHTML = '';
@@ -190,7 +215,11 @@
         updateTimeSlots();
     });
 
-    dateInput.addEventListener('change', updateTimeSlots);
+    dateInput.addEventListener('change', () => {
+        updateDateDisplay();
+        updateTimeSlots();
+    });
+    
     courtSelect.addEventListener('change', updateTimeSlots);
 
     // 예약 신청
@@ -229,7 +258,7 @@
         // Firebase Realtime DB 저장
         push(bookingsRef, {
             name: name,
-            password: password, // 비밀번호 함께 저장
+            password: password,
             date: date,
             court: court,
             time: time,
@@ -243,14 +272,14 @@
         });
     });
 
-    // 예약 취소 (비밀번호 검증 추가)
+    // 예약 취소
     window.deleteBooking = function(id) {
         const targetBooking = localBookings.find(b => b.id === id);
         if (!targetBooking) return;
 
         const inputPw = prompt('예약 시 설정한 비밀번호 4자리를 입력하세요:');
         
-        if (inputPw === null) return; // 취소 버튼을 누른 경우
+        if (inputPw === null) return;
 
         if (inputPw === String(targetBooking.password)) {
             if (confirm('예약을 취소하시겠습니까?')) {
@@ -266,28 +295,34 @@
         }
     };
 
-   // 화면 렌더링 (날짜 옆에 요일 표기 반영)
+    // 실시간 예약 현황 목록 렌더링 (오늘 이후 날짜만 표시 및 요일 병행)
     function renderBookings() {
         listElement.innerHTML = '';
 
-        if (localBookings.length === 0) {
+        const todayStr = getTodayString();
+
+        // 오늘 날짜 포함 이후의 예약 데이터만 필터링
+        const upcomingBookings = localBookings.filter(b => b.date >= todayStr);
+
+        if (upcomingBookings.length === 0) {
             listElement.innerHTML = '<li style="justify-content: center; color: #7f8c8d;">예약 내역이 없습니다.</li>';
             return;
         }
 
         // 날짜 및 시간 오름차순 정렬
-        localBookings.sort((a, b) => {
+        upcomingBookings.sort((a, b) => {
             if (a.date === b.date) {
                 return a.time.localeCompare(b.time);
             }
             return a.date.localeCompare(b.date);
         });
 
-        localBookings.forEach(b => {
+        upcomingBookings.forEach(b => {
+            const dayName = getDayOfWeekName(b.date);
             const li = document.createElement('li');
             li.innerHTML = `
                 <div>
-                    <strong>${b.date}</strong> | ${b.court} | ${b.time}<br>
+                    <strong>${b.date}(${dayName})</strong> | ${b.court} | ${b.time}<br>
                     <small style="color: #555;">예약자: ${b.name}</small>
                 </div>
                 <button class="cancel-btn" onclick="deleteBooking('${b.id}')">취소</button>
