@@ -21,12 +21,15 @@
         .info-text { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
         option:disabled { color: #aaa; background-color: #eee; }
 
-        /* 날짜 및 요일 커스텀 입력창 스타일 */
-        .date-input-wrapper { position: relative; width: 100%; }
-        .date-input-wrapper input[type="text"] { cursor: pointer; background-color: #fff; }
-        .date-input-wrapper input[type="date"] {
-            position: absolute; left: 0; top: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer; z-index: 10;
+        /* 날짜 레이아웃 */
+        .date-box { display: flex; align-items: center; gap: 8px; }
+        .date-box input[type="date"] { flex: 1; }
+        .day-badge { 
+            font-weight: bold; 
+            color: #27ae60; 
+            font-size: 15px; 
+            white-space: nowrap; 
+            min-width: 40px;
         }
     </style>
 </head>
@@ -47,11 +50,11 @@
 
     <div class="form-group">
         <label for="bookingDate">예약 날짜</label>
-        <div class="date-input-wrapper">
-            <!-- 요일 포함 표시용 텍스트 입력창 -->
-            <input type="text" id="bookingDateText" readonly placeholder="날짜를 선택하세요">
-            <!-- 달력 피커 작동용 숨김 date 입력창 -->
+        <div class="date-box">
+            <!-- 달력 피커가 정상 노출되는 기본 date 입력창 -->
             <input type="date" id="bookingDate">
+            <!-- 옆에 요일을 보여주는 텍스트 바 -->
+            <span id="dayOfWeekDisplay" class="day-badge"></span>
         </div>
         <div class="info-text">* 오늘 기준으로 7일 이내 날짜만 예약 가능합니다.</div>
     </div>
@@ -98,7 +101,7 @@
     const bookingsRef = ref(db, 'tennis_bookings');
 
     const dateInput = document.getElementById('bookingDate');
-    const dateInputText = document.getElementById('bookingDateText');
+    const dayOfWeekDisplay = document.getElementById('dayOfWeekDisplay');
     const userNameInput = document.getElementById('userName');
     const userPasswordInput = document.getElementById('userPassword');
     const courtSelect = document.getElementById('courtSelect');
@@ -106,7 +109,7 @@
     const bookBtn = document.getElementById('bookBtn');
     const listElement = document.getElementById('bookingList');
 
-    let localBookings = []; // 현재 로컬에 수신된 전체 예약 데이터
+    let localBookings = [];
 
     // 오늘 날짜 문자열 반환 (YYYY-MM-DD)
     function getTodayString() {
@@ -117,7 +120,7 @@
         return `${year}-${month}-${day}`;
     }
 
-    // 요일 계산 헬퍼 함수
+    // 요일 계산 함수
     function getDayOfWeekName(dateString) {
         if (!dateString) return '';
         const days = ['일', '월', '화', '수', '목', '금', '토'];
@@ -126,14 +129,13 @@
         return days[dateObj.getDay()];
     }
 
-    // 선택된 날짜에 요일 붙여 텍스트 창에 업데이트 (예: 2026-09-04(금))
-    function updateDateDisplay() {
-        const val = dateInput.value;
-        if (val) {
-            const dayName = getDayOfWeekName(val);
-            dateInputText.value = `${val}(${dayName})`;
+    // 선택한 날짜 옆에 (요일) 라벨 표기
+    function updateDayOfWeekLabel() {
+        if (dateInput.value) {
+            const dayName = getDayOfWeekName(dateInput.value);
+            dayOfWeekDisplay.textContent = `(${dayName})`;
         } else {
-            dateInputText.value = '';
+            dayOfWeekDisplay.textContent = '';
         }
     }
 
@@ -154,10 +156,10 @@
         dateInput.max = formatDate(maxDate);
         dateInput.value = formatDate(today);
         
-        updateDateDisplay();
+        updateDayOfWeekLabel();
     }
 
-    // 06:00 - 24:00 (30분 단위) 옵션 생성 및 예약 상태 반영
+    // 06:00 - 24:00 (30분 단위) 옵션 생성
     function updateTimeSlots() {
         timeSelect.innerHTML = '';
         const selectedDate = dateInput.value;
@@ -185,7 +187,6 @@
                 const option = document.createElement('option');
                 option.value = timeString;
 
-                // 이미 예약된 시간대 체크
                 const isBooked = localBookings.some(b => b.date === selectedDate && b.court === selectedCourt && b.time === timeString);
                 
                 if (isBooked) {
@@ -216,7 +217,7 @@
     });
 
     dateInput.addEventListener('change', () => {
-        updateDateDisplay();
+        updateDayOfWeekLabel();
         updateTimeSlots();
     });
     
@@ -248,14 +249,12 @@
             return;
         }
 
-        // 실시간 중복 검증
         const isDuplicate = localBookings.some(b => b.date === date && b.court === court && b.time === time);
         if (isDuplicate) {
             alert('❌ 이미 해당 날짜와 시간대에 예약된 코트입니다.');
             return;
         }
 
-        // Firebase Realtime DB 저장
         push(bookingsRef, {
             name: name,
             password: password,
@@ -295,13 +294,11 @@
         }
     };
 
-    // 실시간 예약 현황 목록 렌더링 (오늘 이후 날짜만 표시 및 요일 병행)
+    // 실시간 예약 현황 목록 렌더링 (오늘 이후 날짜만 표시 + 요일 추가)
     function renderBookings() {
         listElement.innerHTML = '';
 
         const todayStr = getTodayString();
-
-        // 오늘 날짜 포함 이후의 예약 데이터만 필터링
         const upcomingBookings = localBookings.filter(b => b.date >= todayStr);
 
         if (upcomingBookings.length === 0) {
@@ -309,7 +306,6 @@
             return;
         }
 
-        // 날짜 및 시간 오름차순 정렬
         upcomingBookings.sort((a, b) => {
             if (a.date === b.date) {
                 return a.time.localeCompare(b.time);
