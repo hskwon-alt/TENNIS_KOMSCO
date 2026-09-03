@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎾 실시간 공유 테니스 코트 예약 System</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; margin-bottom: 25px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #34495e; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        button { width: 100%; padding: 12px; background-color: #2ecc71; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        button:hover { background-color: #27ae60; }
+        .list-title { margin-top: 30px; border-bottom: 2px solid #ecf0f1; padding-bottom: 8px; color: #2c3e50; }
+        ul { list-style: none; padding: 0; }
+        li { background: #f8f9fa; padding: 12px; border: 1px solid #e9ecef; border-radius: 6px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .cancel-btn { background-color: #e74c3c; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; width: auto; margin-top: 0; font-size: 12px; }
+        .cancel-btn:hover { background-color: #c0392b; }
+        .info-text { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🎾 테니스 코트 실시간 예약</h2>
+    
+    <div class="form-group">
+        <label for="userName">예약자 성함</label>
+        <input type="text" id="userName" placeholder="이름을 입력하세요">
+    </div>
+
+    <div class="form-group">
+        <label for="bookingDate">예약 날짜</label>
+        <input type="date" id="bookingDate">
+        <div class="info-text">* 오늘 기준으로 7일 이내 날짜만 예약 가능합니다.</div>
+    </div>
+
+    <div class="form-group">
+        <label for="courtSelect">코트 선택</label>
+        <select id="courtSelect">
+            <option value="1번 코트 (인조잔디)">1번 코트 (인조잔디)</option>
+            <option value="2번 코트 (클레이)">2번 코트 (클레이)</option>
+            <option value="3번 코트 (클레이)">3번 코트 (클레이)</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="timeSelect">시간대 선택 (30분 단위)</label>
+        <select id="timeSelect"></select>
+    </div>
+
+    <button id="bookBtn">예약하기</button>
+
+    <h3 class="list-title">📋 실시간 예약 현황 목록</h3>
+    <ul id="bookingList"></ul>
+</div>
+
+<!-- Firebase SDK (v9+ 모듈 방식) -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getDatabase, ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+    // ⚠️ 아래 정보를 본인의 Firebase 프로젝트 설정값으로 반드시 교체해 주세요!
+    const firebaseConfig = {
+       apiKey: "AIzaSyBLf8wUbvC0-52_wnGaGV2ezQEyADA2OHk",
+  authDomain: "tennis-court-c519a.firebaseapp.com",
+  databaseURL: "https://tennis-court-c519a-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "tennis-court-c519a",
+  storageBucket: "tennis-court-c519a.firebasestorage.app",
+  messagingSenderId: "102054557591",
+  appId: "1:102054557591:web:1a71f410276e1dade8f6d2"
+    };
+
+    // Firebase 초기화
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const bookingsRef = ref(db, 'tennis_bookings');
+
+    const dateInput = document.getElementById('bookingDate');
+    const userNameInput = document.getElementById('userName');
+    const courtSelect = document.getElementById('courtSelect');
+    const timeSelect = document.getElementById('timeSelect');
+    const bookBtn = document.getElementById('bookBtn');
+    const listElement = document.getElementById('bookingList');
+
+    let localBookings = []; // 현재 로컬에 수신된 전체 예약 데이터
+
+    // 오늘 기준 7일 날짜 제한 설정
+    function setDateLimits() {
+        const today = new Date();
+        const maxDate = new Date();
+        maxDate.setDate(today.getDate() + 6);
+
+        const formatDate = (d) => d.toISOString().split('T')[0];
+
+        dateInput.min = formatDate(today);
+        dateInput.max = formatDate(maxDate);
+        dateInput.value = formatDate(today);
+    }
+
+    // 06:00 - 24:00 (30분 단위) 옵션 생성
+    function generateTimeSlots() {
+        const startHour = 6;
+        const endHour = 24;
+
+        for (let hour = startHour; hour < endHour; hour++) {
+            for (let min of [0, 30]) {
+                const startH = String(hour).padStart(2, '0');
+                const startM = String(min).padStart(2, '0');
+                
+                let nextHour = hour;
+                let nextMin = min + 30;
+                if (nextMin === 60) {
+                    nextMin = 0;
+                    nextHour += 1;
+                }
+                
+                const endH = String(nextHour).padStart(2, '0');
+                const endM = String(nextMin).padStart(2, '0');
+
+                const timeString = `${startH}:${startM} - ${endH}:${endM}`;
+                const option = document.createElement('option');
+                option.value = timeString;
+                option.textContent = timeString;
+                timeSelect.appendChild(option);
+            }
+        }
+    }
+
+    // [핵심] Firebase 실시간 리스너: DB 데이터가 변경되면 연결된 모든 화면이 자동 업데이트됨
+    onValue(bookingsRef, (snapshot) => {
+        const data = snapshot.val();
+        localBookings = [];
+        
+        if (data) {
+            Object.keys(data).forEach(key => {
+                localBookings.push({ id: key, ...data[key] });
+            });
+        }
+        
+        renderBookings();
+    });
+
+    // 예약 신청
+    bookBtn.addEventListener('click', () => {
+        const name = userNameInput.value.trim();
+        const date = dateInput.value;
+        const court = courtSelect.value;
+        const time = timeSelect.value;
+
+        if (!name) {
+            alert('예약자 성함을 입력해 주세요.');
+            return;
+        }
+        if (!date) {
+            alert('날짜를 선택해 주세요.');
+            return;
+        }
+
+        if (date < dateInput.min || date > dateInput.max) {
+            alert('❌ 예약은 오늘부터 7일 이내의 날짜만 가능합니다.');
+            return;
+        }
+
+        // 실시간 중복 검증
+        const isDuplicate = localBookings.some(b => b.date === date && b.court === court && b.time === time);
+
+        if (isDuplicate) {
+            alert('❌ 이미 해당 날짜와 시간대에 예약된 코트입니다.');
+            return;
+        }
+
+        // Firebase Realtime DB 저장
+        push(bookingsRef, {
+            name: name,
+            date: date,
+            court: court,
+            time: time,
+            createdAt: Date.now()
+        }).then(() => {
+            alert('✅ 예약이 완료되었습니다! (전체 컴퓨터에 실시간 반영)');
+            userNameInput.value = '';
+        }).catch((err) => {
+            alert('오류가 발생했습니다: ' + err.message);
+        });
+    });
+
+    // 예약 취소 (전역 연결)
+    window.deleteBooking = function(id) {
+        if (confirm('예약을 취소하시겠습니까?')) {
+            const itemRef = ref(db, `tennis_bookings/${id}`);
+            remove(itemRef).then(() => {
+                alert('예약이 취소되었습니다.');
+            }).catch((err) => {
+                alert('취소 처리 실패: ' + err.message);
+            });
+        }
+    };
+
+    // 화면 렌더링
+    function renderBookings() {
+        listElement.innerHTML = '';
+
+        if (localBookings.length === 0) {
+            listElement.innerHTML = '<li style="justify-content: center; color: #7f8c8d;">예약 내역이 없습니다.</li>';
+            return;
+        }
+
+        // 날짜순 정렬
+        localBookings.sort((a, b) => a.date.localeCompare(b.date));
+
+        localBookings.forEach(b => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <div>
+                    <strong>${b.date}</strong> | ${b.court} | ${b.time}<br>
+                    <small style="color: #555;">예약자: ${b.name}</small>
+                </div>
+                <button class="cancel-btn" onclick="deleteBooking('${b.id}')">취소</button>
+            `;
+            listElement.appendChild(li);
+        });
+    }
+
+    // 초기화 실행
+    setDateLimits();
+    generateTimeSlots();
+</script>
+
+</body>
+</html>
