@@ -277,28 +277,34 @@
         }
     };
 
-   // 화면 렌더링 (날짜 옆에 요일 표기 반영)
+    // 실시간 예약 현황 목록 렌더링 (오늘 이후 날짜만 표시)
     function renderBookings() {
         listElement.innerHTML = '';
 
-        if (localBookings.length === 0) {
+        const todayStr = getTodayString();
+
+        // 오늘 날짜 포함 이후의 예약 데이터만 필터링
+        const upcomingBookings = localBookings.filter(b => b.date >= todayStr);
+
+        if (upcomingBookings.length === 0) {
             listElement.innerHTML = '<li style="justify-content: center; color: #7f8c8d;">예약 내역이 없습니다.</li>';
             return;
         }
 
         // 날짜 및 시간 오름차순 정렬
-        localBookings.sort((a, b) => {
+        upcomingBookings.sort((a, b) => {
             if (a.date === b.date) {
                 return a.time.localeCompare(b.time);
             }
             return a.date.localeCompare(b.date);
         });
 
-        localBookings.forEach(b => {
+        upcomingBookings.forEach(b => {
+            const dayName = getDayOfWeekName(b.date);
             const li = document.createElement('li');
             li.innerHTML = `
                 <div>
-                    <strong>${b.date}</strong> | ${b.court} | ${b.time}<br>
+                    <strong>${b.date} (${dayName})</strong> | ${b.court} | ${b.time}<br>
                     <small style="color: #555;">예약자: ${b.name}</small>
                 </div>
                 <button class="cancel-btn" onclick="deleteBooking('${b.id}')">취소</button>
