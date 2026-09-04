@@ -195,22 +195,25 @@
         return range1.start < range2.end && range1.end > range2.start;
     }
 
-    // 06:00 - 24:00 (1시간 단위 / 마지막 시작 23:00)
+    // 06:00 - 24:00 (마지막 타임: 23:00 - 24:00)
     function updateTimeSlots() {
         timeSelect.innerHTML = '';
         const selectedDate = dateInput.value;
         const selectedCourt = courtSelect.value;
 
-        const startMin = 6 * 60; // 06:00
-        const endMin = 23 * 60;  // 23:00 (마지막 타임: 23:00 - 24:00)
+        const startMin = 6 * 60; // 06:00 (360분)
+        const maxStartMin = 23 * 60; // 23:00 (1380분) - 이 시점 이후 시작 타임 차단
 
-        for (let m = startMin; m <= endMin; m += 30) {
+        for (let m = startMin; m <= maxStartMin; m += 30) {
             const sh = String(Math.floor(m / 60)).padStart(2, '0');
             const sm = String(m % 60).padStart(2, '0');
             
-            const endM = m + 60; // 1시간 이용
+            const endM = m + 60; // 1시간
             const eh = String(Math.floor(endM / 60)).padStart(2, '0');
             const em = String(endM % 60).padStart(2, '0');
+
+            // 24:00 초과(예: 24:30)하는 타임 명확히 걸러내기
+            if (endM > 24 * 60) break;
 
             const timeString = `${sh}:${sm} - ${eh}:${em}`;
             const option = document.createElement('option');
