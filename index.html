@@ -195,15 +195,14 @@
         return range1.start < range2.end && range1.end > range2.start;
     }
 
-    // 06:00 - 24:00 (1시간 단위 / 30분 간격 슬라이딩) 옵션 생성
+    // 06:00 - 24:00 (1시간 단위 / 마지막 시작 23:00)
     function updateTimeSlots() {
         timeSelect.innerHTML = '';
         const selectedDate = dateInput.value;
         const selectedCourt = courtSelect.value;
 
-        // 06:00부터 23:00 시작건까지 (종료는 24:00)
-        const startMin = 6 * 60; // 360분
-        const endMin = 23 * 60 + 30; // 마지막 시작 23:00 (종료 24:00)
+        const startMin = 6 * 60; // 06:00
+        const endMin = 23 * 60;  // 23:00 (마지막 타임: 23:00 - 24:00)
 
         for (let m = startMin; m <= endMin; m += 30) {
             const sh = String(Math.floor(m / 60)).padStart(2, '0');
